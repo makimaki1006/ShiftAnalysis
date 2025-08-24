@@ -397,25 +397,43 @@ def apply_period_normalization(shortage_df, period_days, slot_hours, normalizati
 
 
 
-def validate_and_cap_shortage(shortage_df, period_days, slot_hours):
+def validate_and_cap_shortage(
+    shortage_df: pd.DataFrame, period_days: int, slot_hours: float
+) -> tuple[pd.DataFrame, bool]:
+    """Validate shortage data and cap excessive values.
+
+    Parameters
+    ----------
+    shortage_df:
+        欠損時間データ。元の入力は変更しない。
+    period_days:
+        対象となる期間の日数。正の整数である必要がある。
+    slot_hours:
+        スロット時間（時間単位）。正の数値である必要がある。
+
+    Returns
+    -------
+    DataFrame, bool
+        調整済み不足データと、制限が適用されたかどうか。
     """
-    異常値検出と制限機能（27,486.5時間問題対策）
-    
-    Args:
-        shortage_df: 不足時間データフレーム
-        period_days: 対象期間の日数
-        slot_hours: スロット時間（時間単位）
-        
-    Returns:
-        (制限済み不足データ, 制限適用フラグ)
-    """
-    
+
+    if period_days <= 0 or slot_hours <= 0:
+        raise ValueError("period_days and slot_hours must be positive")
+
+    if not isinstance(shortage_df, pd.DataFrame):
+        raise TypeError("shortage_df must be a pandas DataFrame")
+
+    # 作業用にコピーし、非数値は 0 として扱う
+    shortage_df = (
+        shortage_df.copy().apply(pd.to_numeric, errors="coerce").fillna(0)
+    )
+
     # 設定値
     MAX_SHORTAGE_PER_DAY = 5  # FINAL_FIX: 現実的な1日最大5時間
     # 理由: 24時間制でも1日5時間不足が現実的上限
     # まずは日毎に不足時間を集計し、日次上限を超える分を制限
     daily_totals = shortage_df.sum(axis=1) * slot_hours
-    capped_dates = []
+    capped_dates: list[str] = []
     for day, total in daily_totals.items():
         if total > MAX_SHORTAGE_PER_DAY:
             scale = MAX_SHORTAGE_PER_DAY / total
